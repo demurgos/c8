@@ -16,7 +16,10 @@ export interface CoverageData {
   functions: Protocol.Profiler.FunctionCoverage[];
 }
 
-export async function runInstrumented(args: ReadonlyArray<string>): Promise<CoverageData[]> {
+export async function runInstrumented(
+  args: ReadonlyArray<string>,
+  filter?: (ev: Protocol.Debugger.ScriptParsedEvent) => boolean,
+): Promise<CoverageData[]> {
   const coverageData: CoverageData[] = [];
 
   return new Promise<CoverageData[]>((resolve, reject) => {
@@ -25,7 +28,7 @@ export async function runInstrumented(args: ReadonlyArray<string>): Promise<Cove
         async (ev: SpawnEvent) => {
           const proxy = ev.proxySpawn(["--inspect=0", ...ev.args]);
           const debuggerPort: number = await getDebuggerPort(proxy);
-          const coverage = await getCoverage(debuggerPort);
+          const coverage = await getCoverage(debuggerPort, filter);
           coverageData.splice(coverageData.length, 0, ...coverage);
         },
         (error: Error) => reject(error),
@@ -74,11 +77,15 @@ export async function getDebuggerPort(proc: ChildProcessProxy): Promise<number> 
   });
 }
 
-async function getCoverage(port: number): Promise<CoverageData[]> {
+async function getCoverage(
+  port: number,
+  filter?: (ev: Protocol.Debugger.ScriptParsedEvent) => boolean,
+): Promise<CoverageData[]> {
   return new Promise<CoverageData[]>(async (resolve, reject) => {
     const timeoutId: NodeJS.Timer = setTimeout(onTimeout, GET_COVERAGE_TIMEOUT);
     let client: Protocol.ProtocolApi;
     let mainExecutionContextId: Protocol.Runtime.ExecutionContextId | undefined;
+    const scriptsToCollect: Set<Protocol.Runtime.ScriptId> = new Set();
     let state: string = "WaitingForMainContext"; // TODO: enum
     try {
       client = await cri({port});
@@ -89,6 +96,7 @@ async function getCoverage(port: number): Promise<CoverageData[]> {
 
       (client as any as events.EventEmitter).once("Runtime.executionContextCreated", onMainContextCreation);
       (client as any as events.EventEmitter).on("Runtime.executionContextDestroyed", onContextDestruction);
+      (client as any as events.EventEmitter).on("Debugger.scriptParsed", onScriptParsed);
 
       await client.Runtime.enable();
     } catch (err) {
@@ -100,6 +108,14 @@ async function getCoverage(port: number): Promise<CoverageData[]> {
       assert(state === "WaitingForMainContext");
       mainExecutionContextId = ev.context.id;
       state = "WaitingForMainContextDestruction";
+    }
+
+    function onScriptParsed(ev: Protocol.Debugger.ScriptParsedEvent) {
+      const collect: boolean = filter !== undefined ? filter(ev) : true;
+      if (collect) {
+        // TODO: Store `isModule`?
+        scriptsToCollect.add(ev.scriptId);
+      }
     }
 
     async function onContextDestruction(ev: Protocol.Runtime.ExecutionContextDestroyedEvent): Promise<void> {
@@ -115,6 +131,9 @@ async function getCoverage(port: number): Promise<CoverageData[]> {
         const {result: coverageList} = await client.Profiler.takePreciseCoverage();
         const result: CoverageData[] = [];
         for (const coverage of coverageList) {
+          if (!scriptsToCollect.has(coverage.scriptId)) {
+            continue;
+          }
           const {scriptSource: source} = await client.Debugger.getScriptSource(coverage);
           result.push({
             url: coverage.url,
@@ -138,6 +157,7 @@ async function getCoverage(port: number): Promise<CoverageData[]> {
     function removeListeners(): void {
       (client as any as events.EventEmitter).removeListener("Runtime.executionContextCreated", onMainContextCreation);
       (client as any as events.EventEmitter).removeListener("Runtime.executionContextDestroyed", onContextDestruction);
+      (client as any as events.EventEmitter).removeListener("Runtime.scriptParsed", onScriptParsed);
       clearTimeout(timeoutId);
       (client as any).close();
     }
