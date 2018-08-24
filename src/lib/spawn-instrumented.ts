@@ -16,14 +16,15 @@ export interface CoverageData {
   functions: Protocol.Profiler.FunctionCoverage[];
 }
 
-export async function runInstrumented(
+export async function spawnInstrumented(
+  file: string,
   args: ReadonlyArray<string>,
   filter?: (ev: Protocol.Debugger.ScriptParsedEvent) => boolean,
 ): Promise<CoverageData[]> {
   const coverageData: CoverageData[] = [];
 
   return new Promise<CoverageData[]>((resolve, reject) => {
-    observeSpawn(process.execPath, args)
+    observeSpawn(file, args)
       .subscribe(
         async (ev: SpawnEvent) => {
           const proxy = ev.proxySpawn(["--inspect=0", ...ev.args]);
@@ -32,9 +33,7 @@ export async function runInstrumented(
           coverageData.splice(coverageData.length, 0, ...coverage);
         },
         (error: Error) => reject(error),
-        () => {
-          resolve(coverageData);
-        },
+        () => resolve(coverageData),
       );
   });
 }

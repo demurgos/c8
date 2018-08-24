@@ -1,7 +1,7 @@
 import chai from "chai";
-import path from "path";
-import { runInstrumented } from "../lib/run-instrumented";
 import Protocol from "devtools-protocol";
+import path from "path";
+import { CoverageData, spawnInstrumented } from "../lib/spawn-instrumented";
 
 function inFixturesDirectory(ev: Protocol.Debugger.ScriptParsedEvent): boolean {
   if (ev.isModule === true) {
@@ -29,12 +29,12 @@ function isDescendantOf(descendantPath: string, ancestorPath: string): boolean {
   return false;
 }
 
-describe("run-instrumented", () => {
-  describe("normal.js", () => {
+describe("spawnInstrumented", () => {
+  describe("node normal.js", () => {
     const FIXTURE = require.resolve("./fixtures/normal.js");
 
-    it("runs it successfully", async () => {
-      const coverage: any[] = await runInstrumented([FIXTURE], inFixturesDirectory);
+    it("runs it successfully and collect V8 coverage", async () => {
+      const coverage: CoverageData[] = await spawnInstrumented(process.execPath, [FIXTURE], inFixturesDirectory);
       chai.assert.isArray(coverage);
       chai.assert.lengthOf(coverage, 2);
     });
