@@ -1,58 +1,31 @@
-import fs from "fs";
 import libCoverage from "istanbul-lib-coverage";
 import libReport from "istanbul-lib-report";
 import reports from "istanbul-reports";
-import path from "path";
+import { CoverageData } from "./spawn-instrumented";
+import { IstanbulFileCoverageData, unwrapNodeCjsCoverage, unwrapNodeCjsSource, v8ToIstanbul } from "v8-to-istanbul";
 
-class Report {
-  reporter: any;
-  coverageDirectory: any;
+export type IstanbulReporter = "text" | "lcov-only";
+
+export interface ReportOptions {
+  coverage: CoverageData[];
+  reporters: IstanbulReporter[];
+  coverageDir: string;
   watermarks: any;
-
-  constructor({reporter, coverageDirectory, watermarks}: any) {
-    this.reporter = reporter;
-    this.coverageDirectory = coverageDirectory;
-    this.watermarks = watermarks;
-  }
-
-  public run() {
-    const map = this._getCoverageMapFromAllCoverageFiles();
-    const context = libReport.createContext({
-      dir: "./coverage",
-      watermarks: this.watermarks,
-    });
-
-    const tree = libReport.summarizers.pkg(map);
-
-    this.reporter.forEach((reporter: any) => {
-      tree.visit(reports.create(reporter), context);
-    });
-  }
-
-  public _getCoverageMapFromAllCoverageFiles() {
-    const map = libCoverage.createCoverageMap({});
-
-    this._loadReports().forEach((report) => {
-      map.merge(report);
-    });
-
-    return map;
-  }
-
-  public _loadReports() {
-    const tmpDirctory = path.resolve(this.coverageDirectory, "./tmp");
-    const files = fs.readdirSync(tmpDirctory);
-
-    return files.map((f) => {
-      return JSON.parse(fs.readFileSync(
-        path.resolve(tmpDirctory, f),
-        "utf8",
-      ));
-    });
-  }
 }
 
-export function report(opts: any) {
-  const report = new Report(opts);
-  report.run();
-};
+export async function writeReports(options: ReportOptions): Promise<void> {
+  const map = libCoverage.createCoverageMap({});
+  for (const v8Coverage of options.coverage) {
+    const istanbulCoverage: IstanbulFileCoverageData = v8ToIstanbul(unwrapNodeCjsCoverage(v8Coverage), unwrapNodeCjsSource(v8Coverage.source));
+    map.merge({[istanbulCoverage.path]: istanbulCoverage});
+  }
+  const tree = libReport.summarizers.pkg(map);
+  const context = libReport.createContext({
+    dir: options.coverageDir,
+    watermarks: options.watermarks,
+  });
+
+  for (const reporter of options.reporters) {
+    tree.visit(reports.create(reporter), context);
+  }
+}

@@ -1,29 +1,13 @@
 #!/usr/bin/env node
 
-import foreground from "foreground-child";
-import mkdirp from "mkdirp";
-import path from "path";
-import rimraf from "rimraf";
-import sw from "spawn-wrap";
-import { hideInstrumenteeArgs, hideInstrumenterArgs, yargs } from "../lib/parse-args";
-import { report } from "../lib/report";
+import { execCli } from "../lib/cli";
 
-const instrumenterArgs = hideInstrumenteeArgs();
+async function main(): Promise<never> {
+  const args: string[] = process.argv.slice(2);
+  const cwd: string = process.cwd();
+  const proc: any = process;
+  const returnCode: number = await execCli(args, cwd, proc);
+  return process.exit(returnCode) as never;
+}
 
-const argv = yargs.parse(instrumenterArgs);
-
-const tmpDirctory = path.resolve(argv.coverageDirectory, "./tmp");
-rimraf.sync(tmpDirctory);
-mkdirp.sync(tmpDirctory);
-
-sw([require.resolve("../lib/wrap")], {
-  C8_ARGV: JSON.stringify(argv),
-});
-
-foreground(hideInstrumenterArgs(argv), (out: any) => {
-  report({
-    reporter: Array.isArray(argv.reporter) ? argv.reporter : [argv.reporter],
-    coverageDirectory: argv.coverageDirectory,
-    watermarks: argv.watermarks,
-  });
-});
+main();

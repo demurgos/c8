@@ -4,10 +4,12 @@
   "description": "Collect test coverage using v8's inspector",
   "bin": "./build/bin/c8.js",
   "scripts": {
+    "build:bin": "tsc --project src/bin/tsconfig.json",
     "build:lib": "tsc --project src/lib/tsconfig.json",
     "bundle": "bundle-dependencies update",
     "test": "npm run build:lib && nyc mocha --require ts-node/register \"./src/test/*.ts\"",
     "posttest": "standard",
+    "prepare": "npm run build:bin",
     "release": "standard-version"
   },
   "c8": {
@@ -64,10 +66,12 @@
     "@types/chai": "^4.1.4",
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.5.6",
+    "@types/semver": "^5.5.0",
     "bundle-dependencies": "^1.0.2",
     "chai": "^4.1.2",
     "mocha": "^5.2.0",
     "nyc": "^13.0.1",
+    "semver": "^5.5.1",
     "standard": "^11.0.1",
     "standard-version": "^4.2.0",
     "ts-node": "^7.0.0",
