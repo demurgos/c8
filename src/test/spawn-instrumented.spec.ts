@@ -1,19 +1,16 @@
 import chai from "chai";
-import Protocol from "devtools-protocol";
 import path from "path";
-import { CoverageData, spawnInstrumented } from "../lib/spawn-instrumented";
+import { ModuleInfo } from "../lib/filter";
+import { SourcedProcessCov, spawnInstrumented } from "../lib/spawn-instrumented";
+import { parseSys as parseNodeScriptUrl, ScriptUrl } from "node-script-url";
+import { toSysPath } from "furi";
 
-function inFixturesDirectory(ev: Protocol.Debugger.ScriptParsedEvent): boolean {
-  if (ev.isModule === true) {
+function inFixturesDirectory(info: ModuleInfo): boolean {
+  const scriptUrl: ScriptUrl = parseNodeScriptUrl(info.url);
+  if (!scriptUrl.isRegularFile) {
     return false;
   }
-  if (ev.url.startsWith("file://")) {
-    return false;
-  }
-  if (!path.isAbsolute(ev.url)) {
-    return false;
-  }
-  return isDescendantOf(ev.url, path.resolve(__dirname, "fixtures"));
+  return isDescendantOf(scriptUrl.path, path.resolve(__dirname, "fixtures"));
 }
 
 function isDescendantOf(descendantPath: string, ancestorPath: string): boolean {
@@ -34,9 +31,11 @@ describe("spawnInstrumented", () => {
     const FIXTURE = require.resolve("./fixtures/normal.js");
 
     it("runs it successfully and collect V8 coverage", async () => {
-      const coverage: CoverageData[] = await spawnInstrumented(process.execPath, [FIXTURE], inFixturesDirectory);
-      chai.assert.isArray(coverage);
-      chai.assert.lengthOf(coverage, 2);
+      const processCov: SourcedProcessCov[] = await spawnInstrumented(process.execPath, [FIXTURE], inFixturesDirectory);
+      chai.assert.isArray(processCov);
+      chai.assert.lengthOf(processCov, 1);
+      chai.assert.isArray(processCov[0].result);
+      chai.assert.lengthOf(processCov[0].result, 2);
     });
   });
 });

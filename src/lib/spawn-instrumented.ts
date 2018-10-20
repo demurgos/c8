@@ -1,8 +1,11 @@
+import { ProcessCov, ScriptCov } from "@c88/v8-coverage";
 import assert from "assert";
 import cri from "chrome-remote-interface";
 import { ChildProcessProxy, observeSpawn, SpawnEvent } from "demurgos-spawn-wrap";
 import Protocol from "devtools-protocol";
 import events from "events";
+import { SourceType } from "istanbulize";
+import { CoverageFilter } from "./filter";
 
 const DEBUGGER_URI_RE = /ws:\/\/.*?:(\d+)\//;
 // In milliseconds (1s)
@@ -10,37 +13,40 @@ const GET_DEBUGGER_PORT_TIMEOUT = 1000;
 // In milliseconds (10s)
 const GET_COVERAGE_TIMEOUT = 10000;
 
-export interface CoverageData {
-  url: string;
-  source: string;
-  functions: Protocol.Profiler.FunctionCoverage[];
+export interface SourcedScriptCov extends ScriptCov {
+  sourceText: string;
+  sourceType: SourceType;
+}
+
+export interface SourcedProcessCov extends ProcessCov {
+  result: SourcedScriptCov[];
 }
 
 export async function spawnInstrumented(
   file: string,
   args: ReadonlyArray<string>,
-  filter?: (ev: Protocol.Debugger.ScriptParsedEvent) => boolean,
-): Promise<CoverageData[]> {
-  const coverageData: CoverageData[] = [];
+  filter?: CoverageFilter,
+): Promise<SourcedProcessCov[]> {
+  const processCovs: SourcedProcessCov[] = [];
 
-  return new Promise<CoverageData[]>((resolve, reject) => {
+  return new Promise<SourcedProcessCov[]>((resolve, reject) => {
     observeSpawn(file, args)
       .subscribe(
         async (ev: SpawnEvent) => {
           const proxy = ev.proxySpawn(["--inspect=0", ...ev.args]);
           const debuggerPort: number = await getDebuggerPort(proxy);
-          const coverage = await getCoverage(debuggerPort, filter);
-          coverageData.splice(coverageData.length, 0, ...coverage);
+          const processCov: SourcedProcessCov = await getCoverage(debuggerPort, filter);
+          processCovs.push(processCov);
         },
         (error: Error) => reject(error),
-        () => resolve(coverageData),
+        () => resolve(processCovs),
       );
   });
 }
 
 export async function getDebuggerPort(proc: ChildProcessProxy): Promise<number> {
   return new Promise<number>((resolve, reject) => {
-    const timeoutId: NodeJS.Timer = setTimeout(onTimeout, GET_DEBUGGER_PORT_TIMEOUT);
+    const timeoutId: NodeJS.Timer = setTimeout(onTimeout, GET_DEBUGGER_PORT_TIMEOUT * 100);
     let stderrBuffer: Buffer = Buffer.alloc(0);
     proc.stderr.on("data", onStderrData);
     proc.stderr.on("close", onClose);
@@ -76,15 +82,12 @@ export async function getDebuggerPort(proc: ChildProcessProxy): Promise<number> 
   });
 }
 
-async function getCoverage(
-  port: number,
-  filter?: (ev: Protocol.Debugger.ScriptParsedEvent) => boolean,
-): Promise<CoverageData[]> {
-  return new Promise<CoverageData[]>(async (resolve, reject) => {
+async function getCoverage(port: number, filter?: CoverageFilter): Promise<SourcedProcessCov> {
+  return new Promise<SourcedProcessCov>(async (resolve, reject) => {
     const timeoutId: NodeJS.Timer = setTimeout(onTimeout, GET_COVERAGE_TIMEOUT);
     let client: Protocol.ProtocolApi;
     let mainExecutionContextId: Protocol.Runtime.ExecutionContextId | undefined;
-    const scriptsToCollect: Set<Protocol.Runtime.ScriptId> = new Set();
+    const scriptsToCollect: Map<Protocol.Runtime.ScriptId, boolean> = new Map();
     let state: string = "WaitingForMainContext"; // TODO: enum
     try {
       client = await cri({port});
@@ -112,8 +115,7 @@ async function getCoverage(
     function onScriptParsed(ev: Protocol.Debugger.ScriptParsedEvent) {
       const collect: boolean = filter !== undefined ? filter(ev) : true;
       if (collect) {
-        // TODO: Store `isModule`?
-        scriptsToCollect.add(ev.scriptId);
+        scriptsToCollect.set(ev.scriptId, ev.isModule !== undefined ? ev.isModule : false);
       }
     }
 
@@ -127,20 +129,21 @@ async function getCoverage(
       try {
         // await client.Profiler.stopPreciseCoverage();
         await client.HeapProfiler.collectGarbage();
-        const {result: coverageList} = await client.Profiler.takePreciseCoverage();
-        const result: CoverageData[] = [];
-        for (const coverage of coverageList) {
-          if (!scriptsToCollect.has(coverage.scriptId)) {
+        const {result: scriptCovs} = await client.Profiler.takePreciseCoverage();
+        const result: SourcedScriptCov[] = [];
+        for (const scriptCov of scriptCovs) {
+          const isModule: boolean | undefined = scriptsToCollect.get(scriptCov.scriptId);
+          if (isModule === undefined) {
             continue;
           }
-          const {scriptSource: source} = await client.Debugger.getScriptSource(coverage);
+          const {scriptSource} = await client.Debugger.getScriptSource({scriptId: scriptCov.scriptId});
           result.push({
-            url: coverage.url,
-            source,
-            functions: coverage.functions,
+            ...scriptCov,
+            sourceText: scriptSource,
+            sourceType: isModule ? SourceType.Module : SourceType.Script,
           });
         }
-        resolve(result);
+        resolve({result});
       } catch (err) {
         reject(err);
       } finally {

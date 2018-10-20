@@ -1,7 +1,7 @@
 {
-  "name": "c8",
-  "version": "2.0.0",
-  "description": "Collect test coverage using v8's inspector",
+  "name": "c88",
+  "version": "0.1.0",
+  "description": "Code coverage from the future",
   "bin": "./build/bin/c8.js",
   "scripts": {
     "build:bin": "tsc --project src/bin/tsconfig.json",
@@ -32,33 +32,32 @@
     "inspector"
   ],
   "engines": {
-    "node": ">=8.8.1"
+    "node": ">=10.12.0"
   },
-  "author": "Ben Coe <ben@npmjs.com>",
-  "contributors": [
-    "Charles Samborski <demurgos@demurgos.net> (demurgos.net)"
-  ],
-  "license": "ISC",
+  "author": "Charles Samborski <demurgos@demurgos.net> (https://demurgos.net)",
+  "license": "MIT",
   "dependencies": {
+    "@c88/v8-coverage": "^0.1.0",
     "@types/find-up": "^2.1.1",
     "@types/mkdirp": "^0.5.2",
     "@types/rimraf": "^2.0.2",
     "@types/uuid": "^3.4.3",
     "@types/yargs": "^11.1.1",
     "chrome-remote-interface": "^0.26.1",
-    "demurgos-spawn-wrap": "^2.0.0-beta.2",
+    "demurgos-foreground-child": "^1.6.0-beta.0",
+    "demurgos-spawn-wrap": "^2.0.0-beta.3",
     "devtools-protocol": "0.0.581326",
     "find-up": "^3.0.0",
-    "foreground-child": "^1.5.6",
+    "furi": "^0.1.0",
     "istanbul-lib-coverage": "^2.0.1",
     "istanbul-lib-report": "^2.0.1",
     "istanbul-reports": "^2.0.0",
+    "istanbulize": "^0.1.0",
     "mkdirp": "^0.5.1",
+    "node-script-url": "^0.1.2",
     "rimraf": "^2.6.2",
     "signal-exit": "^3.0.2",
     "test-exclude": "^5.0.0",
-    "uuid": "^3.1.0",
-    "v8-to-istanbul": "^1.2.0",
     "yargs": "^12.0.1",
     "yargs-parser": "^10.1.0"
   },
@@ -77,21 +76,5 @@
     "ts-node": "^7.0.0",
     "tslint": "^5.11.0",
     "typescript": "^3.0.1"
-  },
-  "bundledDependencies": [
-    "find-up",
-    "foreground-child",
-    "istanbul-lib-coverage",
-    "istanbul-lib-report",
-    "istanbul-reports",
-    "mkdirp",
-    "rimraf",
-    "signal-exit",
-    "spawn-wrap",
-    "test-exclude",
-    "uuid",
-    "v8-to-istanbul",
-    "yargs",
-    "yargs-parser"
-  ]
+  }
 }

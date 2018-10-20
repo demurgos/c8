@@ -1,22 +1,48 @@
+import { mergeProcessCovs, ProcessCov } from "@c88/v8-coverage";
 import libCoverage from "istanbul-lib-coverage";
 import libReport from "istanbul-lib-report";
 import reports from "istanbul-reports";
-import { CoverageData } from "./spawn-instrumented";
-import { IstanbulFileCoverageData, unwrapNodeCjsCoverage, unwrapNodeCjsSource, v8ToIstanbul } from "v8-to-istanbul";
+import { IstanbulFileCoverageData, istanbulize, SourceType, unwrapScriptCov, unwrapSourceText } from "istanbulize";
+import { SourcedProcessCov } from "./spawn-instrumented";
 
 export type IstanbulReporter = "text" | "lcov-only";
 
 export interface ReportOptions {
-  coverage: CoverageData[];
+  processCovs: SourcedProcessCov[];
   reporters: IstanbulReporter[];
   coverageDir: string;
   watermarks: any;
 }
 
+interface ScriptData {
+  sourceText: string;
+  sourceType: SourceType;
+}
+
 export async function writeReports(options: ReportOptions): Promise<void> {
+  const urlToScriptData: Map<string, ScriptData> = new Map();
+  for (const processCov of options.processCovs) {
+    for (const {url, sourceText, sourceType} of processCov.result) {
+      urlToScriptData.set(
+        url,
+        {
+          sourceText,
+          sourceType,
+        },
+      );
+    }
+  }
+
+  const merged: ProcessCov = mergeProcessCovs(options.processCovs);
+
   const map = libCoverage.createCoverageMap({});
-  for (const v8Coverage of options.coverage) {
-    const istanbulCoverage: IstanbulFileCoverageData = v8ToIstanbul(unwrapNodeCjsCoverage(v8Coverage), unwrapNodeCjsSource(v8Coverage.source));
+  for (const scriptCov of merged.result) {
+    const {sourceType, sourceText} = urlToScriptData.get(scriptCov.url)!;
+    const istanbulCoverage: IstanbulFileCoverageData = istanbulize({
+      sourceType,
+      sourceText: sourceType === SourceType.Script ? unwrapSourceText(sourceText) : sourceText,
+      scriptCov: sourceType === SourceType.Script ? unwrapScriptCov(scriptCov) : scriptCov,
+    });
     map.merge({[istanbulCoverage.path]: istanbulCoverage});
   }
   const tree = libReport.summarizers.pkg(map);

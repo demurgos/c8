@@ -3,10 +3,10 @@ import findUp from "find-up";
 import fs from "fs";
 import Exclude from "test-exclude";
 import yargs from "yargs";
-import { IstanbulReporter, writeReports } from "./report";
-import { CoverageData, spawnInstrumented } from "./spawn-instrumented";
-import { VERSION } from "./version";
 import { CoverageFilter, fromGlob } from "./filter";
+import { IstanbulReporter, writeReports } from "./report";
+import { SourcedProcessCov, spawnInstrumented } from "./spawn-instrumented";
+import { VERSION } from "./version";
 
 interface Watermarks {
   lines: [number, number];
@@ -128,9 +128,9 @@ async function execRunAction(action: RunAction, cwd: string, proc: any): Promise
   const file: string = action.config.command[0];
   const args: string[] = action.config.command.slice(1);
   const filter: CoverageFilter = fromGlob([]); // TODO: Pass include/exclude.
-  const coverage: CoverageData[] = await spawnInstrumented(file, args, filter);
+  const processCovs: SourcedProcessCov[] = await spawnInstrumented(file, args, filter);
   await writeReports({
-    coverage,
+    processCovs,
     coverageDir: action.config.coverageDir,
     reporters: action.config.reporters,
     watermarks: action.config.waterMarks,

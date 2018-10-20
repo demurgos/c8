@@ -1,36 +1,35 @@
-import Protocol from "devtools-protocol";
-import path from "path";
+import sysPath from "path";
+import url from "url";
+import { parseSys as parseNodeScriptUrl, ScriptUrl } from "node-script-url";
+import { fromSysPath } from "furi";
 
-export type CoverageFilter = (ev: Protocol.Debugger.ScriptParsedEvent) => boolean;
+export interface ModuleInfo {
+  url: string;
+  isModule?: boolean;
+}
+
+export type CoverageFilter = (info: ModuleInfo) => boolean;
 
 export function fromGlob(patterns: string[]): CoverageFilter {
   // TODO: Actually create a filter based on the glob
+  // tslint:disable-next-line:no-console
   console.warn("NotImplemented: fromGlob (fallback to `() => inCwd`)");
   return inCwd;
 }
 
-function inCwd(ev: Protocol.Debugger.ScriptParsedEvent): boolean {
-  if (ev.isModule === true) {
-    return false;
-  }
-  if (ev.url.startsWith("file://")) {
-    return false;
-  }
-  if (!path.isAbsolute(ev.url)) {
-    return false;
-  }
-  return isDescendantOf(ev.url, process.cwd()) && !isDescendantOf(ev.url, path.resolve(process.cwd(), "node_modules"));
+function inCwd(info: ModuleInfo): boolean {
+  const scriptUrl: ScriptUrl = parseNodeScriptUrl(info.url);
+  const nodeModulesFuri: string = fromSysPath(sysPath.resolve(process.cwd(), "node_modules")).href;
+  return scriptUrl.isRegularFile && isDescendantOf(scriptUrl.url, nodeModulesFuri);
 }
 
-function isDescendantOf(descendantPath: string, ancestorPath: string): boolean {
-  if (descendantPath === ancestorPath) {
-    return false;
-  }
-  while (descendantPath !== path.dirname(descendantPath)) {
-    descendantPath = path.dirname(descendantPath);
-    if (descendantPath === ancestorPath) {
-      return true;
+function isDescendantOf(curUrl: string, ancestorUrl: string): boolean {
+  const cur: ReadonlyArray<string> = new url.URL(curUrl).pathname.split("/");
+  const ancestor: ReadonlyArray<string> = new url.URL(ancestorUrl).pathname.split("/");
+  for (const [i, segment] of ancestor.entries()) {
+    if (cur[i] !== segment) {
+      return false;
     }
   }
-  return false;
+  return true;
 }
